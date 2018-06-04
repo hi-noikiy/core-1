@@ -157,8 +157,14 @@ class MailNotifications {
 			$filename = $filter->getFile();
 			$link = $filter->getLink();
 
-			$subject = (string) $this->l->t('%s shared »%s« with you', [$this->senderDisplayName, $filename]);
-			list($htmlBody, $textBody) = $this->createMailBody($filename, $link, $expiration, null, 'internal');
+			$userLanguage = \OC::$server->getConfig()->getUserValue(
+				$recipient->getUID(), 'core', 'lang'
+			);
+
+			$subjectL10n = \OC::$server->getL10N('lib', $userLanguage);
+			$subject = (string) $subjectL10n->t('%s shared »%s« with you', [$this->senderDisplayName, $filename]);
+			$contentL10n = \OC::$server->getL10N('core', $userLanguage);
+			list($htmlBody, $textBody) = $this->createMailBody($filename, $link, $expiration, null, 'internal', $contentL10n);
 
 			// send it out now
 			try {
@@ -167,13 +173,15 @@ class MailNotifications {
 				$message->setTo([$to => $recipientDisplayName]);
 				$message->setHtmlBody($htmlBody);
 				$message->setPlainBody($textBody);
-				$message->setFrom([
+				$message->setFrom(
+					[
 					Util::getDefaultEmailAddress('sharing-noreply') =>
-						(string)$this->l->t('%s via %s', [
+						(string)$subjectL10n->t('%s via %s', [
 							$this->senderDisplayName,
 							$this->defaults->getName()
 						]),
-					]);
+					]
+				);
 				if ($this->replyTo !== null) {
 					$message->setReplyTo([$this->replyTo]);
 				}
@@ -264,12 +272,15 @@ class MailNotifications {
 	 * @param int $expiration expiration date (timestamp)
 	 * @param string $personalNote optional personal note
 	 * @param string $prefix prefix of mail template files
+	 * @param IL10N|null $overrideL10n
+	 *
 	 * @return array an array of the html mail body and the plain text mail body
 	 */
-	public function createMailBody($filename, $link, $expiration, $personalNote = null, $prefix = '') {
-		$formattedDate = $expiration ? $this->l->l('date', $expiration) : null;
+	public function createMailBody($filename, $link, $expiration, $personalNote = null, $prefix = '', $overrideL10n = null) {
+		$l10n = $overrideL10n === null ? $this->l : $overrideL10n;
+		$formattedDate = $expiration ? $l10n->l('date', $expiration) : null;
 
-		$html = new \OC_Template('core', $prefix . 'mail', '');
+		$html = new \OC_Template('core', $prefix . 'mail', '', true, $l10n);
 		$html->assign('link', $link);
 		$html->assign('user_displayname', $this->senderDisplayName);
 		$html->assign('filename', $filename);
@@ -279,7 +290,7 @@ class MailNotifications {
 		}
 		$htmlMail = $html->fetchPage();
 
-		$plainText = new \OC_Template('core', $prefix . 'altmail', '');
+		$plainText = new \OC_Template('core', $prefix . 'altmail', '', true, $l10n);
 		$plainText->assign('link', $link);
 		$plainText->assign('user_displayname', $this->senderDisplayName);
 		$plainText->assign('filename', $filename);
